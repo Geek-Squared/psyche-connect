@@ -1,0 +1,195 @@
+// schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(PATIENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient Patient? @relation("PatientToUser")
+}
+
+model Patient {
+  id              String         @id @default(uuid())
+  name            String
+  email           String         @unique
+  homePhone       String?
+  cellPhone       String?
+  address         String?
+  occupation      String?
+  maritalStatus   MaritalStatus?
+  referringDoctor String?
+  dateOfBirth     DateTime       @default(now())
+  age             Int?
+  gender          String?
+
+  nextOfKin NextOfKin?
+
+  medicalHistory String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  sessions       Session[]
+  bills          Bill[]
+  contracts      Contract[]
+  communications Communication[]
+  isProBono      Boolean         @default(false)
+  moodEntries    MoodEntry[]
+
+  userId String? @unique
+  user   User?   @relation("PatientToUser", fields: [userId], references: [id])
+
+  reasonForService String?
+  Appointment      Appointment[]
+  VideoSession     VideoSession[]
+}
+
+model NextOfKin {
+  id           String  @id @default(uuid())
+  name         String
+  homePhone    String?
+  cellPhone    String?
+  address      String?
+  email        String?
+  relationship String?
+
+  patient   Patient @relation(fields: [patientId], references: [id])
+  patientId String  @unique
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  PARTNER
+  DIVORCED
+  WIDOWED
+}
+
+enum Role {
+  ADMIN
+  PATIENT
+}
+
+model Session {
+  id              String   @id @default(uuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id])
+  date            DateTime @default(now())
+  notes           String?
+  assessmentFiles String[]
+}
+
+model Bill {
+  id            String         @id @default(uuid())
+  patientId     String
+  patient       Patient        @relation(fields: [patientId], references: [id])
+  amount        Float
+  isPaid        Boolean        @default(false)
+  dueDate       DateTime
+  paymentMethod PaymentMethod?
+}
+
+model Communication {
+  id        String            @id @default(uuid())
+  patientId String
+  patient   Patient           @relation(fields: [patientId], references: [id])
+  type      CommunicationType
+  message   String
+  sentAt    DateTime          @default(now())
+  isCustom  Boolean           @default(false)
+}
+
+model Contract {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  terms       String
+  signedAt    DateTime @default(now())
+  documentUrl String
+}
+
+model MoodEntry {
+  id        String   @id @default(uuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  date      DateTime @default(now())
+  mood      String
+  journal   String?
+}
+
+enum CommunicationType {
+  EMAIL
+  WHATSAPP
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  MEDICAL_AID
+}
+
+model Appointment {
+  id        String            @id @default(uuid())
+  patientId String
+  patient   Patient           @relation(fields: [patientId], references: [id])
+  date      DateTime
+  status    AppointmentStatus @default(PENDING)
+  reason    String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  notifications Notification[]
+  VideoSession  VideoSession?
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  AVAILABLE
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  appointmentId String
+  appointment   Appointment      @relation(fields: [appointmentId], references: [id])
+  type          NotificationType
+  message       String
+  sentAt        DateTime         @default(now())
+}
+
+enum NotificationType {
+  EMAIL
+  SMS
+  PUSH
+}
+
+model VideoSession {
+  id            String             @id @default(uuid())
+  roomName      String             @unique
+  appointmentId String             @unique
+  appointment   Appointment        @relation(fields: [appointmentId], references: [id])
+  status        VideoSessionStatus @default(SCHEDULED)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  Patient       Patient?           @relation(fields: [patientId], references: [id])
+  patientId     String?
+}
+
+enum VideoSessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
