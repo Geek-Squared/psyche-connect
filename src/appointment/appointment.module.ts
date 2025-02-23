@@ -7,5 +7,6 @@ import { ScheduleModule } from '@nestjs/schedule';
   imports: [ScheduleModule.forRoot()],
   providers: [AppointmentService],
   controllers: [AppointmentController],
+  exports: [AppointmentService],
 })
 export class AppointmentModule {}

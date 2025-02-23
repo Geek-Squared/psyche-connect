@@ -10,27 +10,18 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-
-// Enum for Marital Status
-export enum MaritalStatus {
-  SINGLE = 'SINGLE',
-  MARRIED = 'MARRIED',
-  PARTNER = 'PARTNER',
-  DIVORCED = 'DIVORCED',
-  WIDOWED = 'WIDOWED',
-}
+import { MaritalStatus } from '@prisma/client';
 
 // DTO for Next of Kin
 export class NextOfKinDto {
   @IsString()
+  @IsOptional()
   name: string;
 
   @IsOptional()
-  @IsPhoneNumber()
   homePhone?: string;
 
   @IsOptional()
-  @IsPhoneNumber()
   cellPhone?: string;
 
   @IsOptional()
@@ -61,11 +52,9 @@ export class PatientDto {
   email: string;
 
   @IsOptional()
-  @IsPhoneNumber()
   homePhone?: string;
 
   @IsOptional()
-  @IsPhoneNumber()
   cellPhone?: string;
 
   @IsOptional()
@@ -77,7 +66,6 @@ export class PatientDto {
   occupation?: string;
 
   @IsOptional()
-  @IsEnum(MaritalStatus)
   maritalStatus?: MaritalStatus;
 
   @IsOptional()
@@ -85,6 +73,7 @@ export class PatientDto {
   gender?: string;
 
   @IsDate()
+  @IsOptional()
   @Type(() => Date)
   dateOfBirth: Date;
 

@@ -11,12 +11,11 @@ import { EventModule } from './event/event.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
-import { TwilioModule } from './twilio/twilio.module';
 import { AppointmentService } from './appointment/appointment.service';
 import { AppointmentController } from './appointment/appointment.controller';
 import { AppointmentModule } from './appointment/appointment.module';
 import { VideoModule } from './video/video.module';
-
+import { VoiceAppointmentModule } from './voice-to-appointment/voice-to-appointment.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -29,9 +28,10 @@ import { VideoModule } from './video/video.module';
     MoodModule,
     EventModule,
     PrismaModule,
-    TwilioModule,
     AppointmentModule,
     VideoModule,
+    AppointmentModule,
+    VoiceAppointmentModule
   ],
   controllers: [AppController, AppointmentController],
   providers: [AppService, AppointmentService],

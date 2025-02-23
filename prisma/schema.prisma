@@ -18,6 +18,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   patient Patient? @relation("PatientToUser")
+  Slot    Slot[]
 }
 
 model Patient {
@@ -30,7 +31,7 @@ model Patient {
   occupation      String?
   maritalStatus   MaritalStatus?
   referringDoctor String?
-  dateOfBirth     DateTime       @default(now())
+  dateOfBirth     DateTime?      @default(now())
   age             Int?
   gender          String?
 
@@ -191,5 +192,22 @@ enum VideoSessionStatus {
   SCHEDULED
   IN_PROGRESS
   COMPLETED
+  CANCELLED
+}
+
+model Slot {
+  id             String     @id @default(uuid())
+  psychologistId String
+  psychologist   User       @relation(fields: [psychologistId], references: [id])
+  startTime      DateTime
+  endTime        DateTime
+  status         SlotStatus @default(AVAILABLE)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+enum SlotStatus {
+  AVAILABLE
+  BOOKED
   CANCELLED
 }

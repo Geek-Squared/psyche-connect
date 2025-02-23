@@ -25,6 +25,15 @@ export class PatientService {
       isProBono,
     } = patientDto;
 
+    // Check if a patient with the same email already exists
+    const existingPatient = await this.prisma.patient.findUnique({
+      where: { email },
+    });
+
+    if (existingPatient) {
+      throw new Error(`A patient with the email ${email} already exists.`);
+    }
+
     const nextOfKinData = nextOfKin
       ? {
           create: {
@@ -161,6 +170,7 @@ export class PatientService {
   }
 
   async remove(id: string): Promise<{ message: string }> {
+    // First, check if patient exists
     const existingPatient = await this.prisma.patient.findUnique({
       where: { id },
     });
@@ -169,7 +179,17 @@ export class PatientService {
       throw new NotFoundException(`Patient with ID ${id} not found`);
     }
 
-    await this.prisma.patient.delete({ where: { id } });
+    // Start a transaction to ensure atomicity
+    await this.prisma.$transaction([
+      // First, delete all related communications
+      this.prisma.communication.deleteMany({
+        where: { patientId: id },
+      }),
+      // Then delete the patient
+      this.prisma.patient.delete({
+        where: { id },
+      }),
+    ]);
 
     return { message: `Patient with ID ${id} successfully deleted` };
   }

@@ -1,4 +1,3 @@
-// src/communication/whatsapp.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { CommunicationDto, CommunicationType } from './dto/communication.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,6 +20,25 @@ export class CommunicationService {
       this.configService.get('TWILIO_AUTH_TOKEN'),
     );
     this.temporarySlots = new Map();
+  }
+
+  // Helper method for formatting dates in WhatsApp messages
+  private formatDateForWhatsApp(date: Date): string {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  }
+
+  // Helper method for formatting times in WhatsApp messages
+  private formatTimeForWhatsApp(date: Date): string {
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
   }
 
   // This method sends a general message to a patient without affecting other flows.
@@ -181,15 +199,6 @@ export class CommunicationService {
           isCustom: false,
         },
       });
-
-      // Optionally, you can add custom logic here to define a response
-      // Example: Auto-reply for general conversation
-      // await this.sendMessage({
-      //   patientId: patient.id,
-      //   message: 'Thanks for your message! Our team will get back to you shortly.',
-      //   type: CommunicationType.WHATSAPP,
-      //   isCustom: true,
-      // });
     } catch (error) {
       this.logger.error(`Error handling incoming message: ${error.message}`);
       throw error;
@@ -313,7 +322,9 @@ export class CommunicationService {
           continue;
         }
 
-        const message = `Hello ${patient.name}, this is a reminder for your upcoming appointment on ${date.toLocaleString()}. Please let us know if you have any questions.`;
+        const formattedDate = this.formatDateForWhatsApp(date);
+        const formattedTime = this.formatTimeForWhatsApp(date);
+        const message = `Hello ${patient.name}, this is a reminder for your upcoming appointment on ${formattedDate} at ${formattedTime}. Please let us know if you have any questions.`;
 
         await this.twilioClient.messages.create({
           from: `whatsapp:${this.configService.get('TWILIO_WHATSAPP_NUMBER')}`,
@@ -322,7 +333,7 @@ export class CommunicationService {
         });
 
         this.logger.log(
-          `Reminder sent to ${patient.cellPhone} for appointment on ${date}`,
+          `Reminder sent to ${patient.cellPhone} for appointment on ${formattedDate}`,
         );
       }
     } catch (error) {
@@ -379,7 +390,7 @@ export class CommunicationService {
       const options = availableSlots
         .map(
           (slot, index) =>
-            `${index + 1}. ${slot.date.toLocaleString()} (${slot.reason || 'General Consultation'})`,
+            `${index + 1}. ${this.formatDateForWhatsApp(slot.date)} at ${this.formatTimeForWhatsApp(slot.date)} (${slot.reason || 'General Consultation'})`,
         )
         .join('\n');
 
@@ -403,6 +414,146 @@ export class CommunicationService {
       throw error;
     }
   }
+
+  // Add the new list picker method
+  async sendAppointmentListPicker(
+    patientId: string,
+    appointmentSlots: Array<{ date: Date; id: string; reason?: string }>,
+  ) {
+    try {
+      const patient = await this.prisma.patient.findUnique({
+        where: { id: patientId },
+        select: { id: true, cellPhone: true, name: true },
+      });
+
+      if (!patient?.cellPhone) {
+        throw new Error('Patient phone number not found');
+      }
+
+      // Format appointment slots for the list picker
+      const formattedSlots = appointmentSlots.map((slot) => ({
+        id: slot.id,
+        title:
+          `${this.formatDateForWhatsApp(new Date(slot.date))} at ${this.formatTimeForWhatsApp(new Date(slot.date))}` + 
+          (slot.reason ? ` (${slot.reason})` : ''),
+      }));
+
+      // Store appointment options in temporary storage for handling responses
+      this.temporarySlots.set(patient.id, appointmentSlots);
+
+      // Send the template with the list picker
+      const message = await this.twilioClient.messages.create({
+        from: `whatsapp:${this.configService.get('TWILIO_WHATSAPP_NUMBER')}`,
+        to: `whatsapp:${patient.cellPhone}`,
+        contentSid: 'HXbcf0b65e20c2ceaa347db6180fcf26fc',
+        contentVariables: JSON.stringify({
+          '1': `Hello ${patient.name}, please select from the available appointment times:`,
+          list_items: formattedSlots,
+        }),
+      });
+
+      await this.prisma.communication.create({
+        data: {
+          patientId,
+          type: CommunicationType.WHATSAPP,
+          message: `Sent appointment list picker with ${formattedSlots.length} options`,
+          isCustom: true,
+        },
+      });
+
+      return {
+        success: true,
+        messageSid: message.sid,
+        appointmentCount: formattedSlots.length,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to send appointment list picker: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
+  // Method to handle list picker responses
+  async handleListPickerResponse(from: string, selectedItemId: string) {
+    try {
+      const phoneNumber = from.replace('whatsapp:', '');
+      const patient = await this.prisma.patient.findFirst({
+        where: { cellPhone: phoneNumber },
+      });
+
+      if (!patient) {
+        throw new Error('Patient not found');
+      }
+
+      // Get the stored appointment slots
+      const appointmentSlots = this.temporarySlots.get(patient.id);
+      if (!appointmentSlots) {
+        await this.sendMessage({
+          patientId: patient.id,
+          message:
+            'Your session has expired. Please request appointment options again.',
+          type: CommunicationType.WHATSAPP,
+          isCustom: true,
+        });
+        return;
+      }
+
+      // Find the selected appointment
+      const selectedAppointment = appointmentSlots.find(
+        (slot) => slot.id === selectedItemId,
+      );
+      if (!selectedAppointment) {
+        await this.sendMessage({
+          patientId: patient.id,
+          message: 'Invalid selection. Please try again.',
+          type: CommunicationType.WHATSAPP,
+          isCustom: true,
+        });
+        return;
+      }
+
+      // Create the appointment in the database
+      await this.prisma.appointment.create({
+        data: {
+          date: selectedAppointment.date,
+          reason: selectedAppointment.reason || 'General Consultation',
+          status: 'CONFIRMED',
+          patientId: patient.id,
+        },
+      });
+
+      // Format confirmation message
+      const formattedDate = this.formatDateForWhatsApp(new Date(selectedAppointment.date));
+      const formattedTime = this.formatTimeForWhatsApp(new Date(selectedAppointment.date));
+
+      // Send confirmation
+      await this.sendMessage({
+        patientId: patient.id,
+        message: `Your appointment has been confirmed for ${formattedDate} at ${formattedTime}. Thank you!`,
+        type: CommunicationType.WHATSAPP,
+        isCustom: true,
+      });
+
+      // Clear temporary slots after booking
+      this.temporarySlots.delete(patient.id);
+
+      return {
+        success: true,
+        appointment: {
+          patientId: patient.id,
+          date: selectedAppointment.date,
+          reason: selectedAppointment.reason || 'General Consultation',
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to handle list picker response: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
   async sendCustomAvailableAppointments(
     patientIds: string | string[],
     slots: { date: string; time: string; reason?: string }[],
@@ -613,12 +764,8 @@ export class CommunicationService {
         },
       });
 
-      const formattedDate = appointmentDate.toLocaleDateString();
-      const formattedTime = appointmentDate.toLocaleTimeString([], {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
+      const formattedDate = this.formatDateForWhatsApp(appointmentDate);
+      const formattedTime = this.formatTimeForWhatsApp(appointmentDate);
 
       const confirmationMessage = `Your appointment has been booked for ${formattedDate} at ${formattedTime} (${selectedSlot.reason || 'General Consultation'}). Thank you!`;
 
@@ -633,10 +780,51 @@ export class CommunicationService {
       this.temporarySlots.delete(patient.id);
 
       this.logger.log(
-        `Appointment booked for patient ${patient.name} at ${appointmentDate}`,
+        `Appointment booked for patient ${patient.name} at ${formattedDate} ${formattedTime}`,
       );
     } catch (error) {
       this.logger.error(`Failed to handle booking response: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Method to send Twilio WhatsApp template
+  async sendTwilioTemplate(
+    patientId: string,
+    templateName: string,
+    parameters: Record<string, string> = {},
+  ) {
+    try {
+      const patient = await this.prisma.patient.findUnique({
+        where: { id: patientId },
+        select: { cellPhone: true },
+      });
+
+      if (!patient?.cellPhone) {
+        throw new Error('Patient phone number not found');
+      }
+
+      // Send template message using Twilio Content API
+      const message = await this.twilioClient.messages.create({
+        from: `whatsapp:${this.configService.get('TWILIO_WHATSAPP_NUMBER')}`,
+        to: `whatsapp:${patient.cellPhone}`,
+        body: null, // Must be null when using template
+        contentSid: templateName,
+        contentVariables: JSON.stringify(parameters),
+      });
+
+      await this.prisma.communication.create({
+        data: {
+          patientId,
+          type: CommunicationType.WHATSAPP,
+          message: `Template: ${templateName}`,
+          isCustom: true,
+        },
+      });
+
+      return message.sid;
+    } catch (error) {
+      this.logger.error(`Failed to send Twilio template: ${error.message}`);
       throw error;
     }
   }
