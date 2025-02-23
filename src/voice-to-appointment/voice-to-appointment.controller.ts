@@ -6,13 +6,13 @@ import {
     Param 
   } from '@nestjs/common';
   import { FileInterceptor } from '@nestjs/platform-express';
-import { VoiceAppointmentService } from './voice-to-appointment.service';
+import { VoiceToAppointmentService } from './voice-to-appointment.service';
 import { Express } from 'express';
 
   @Controller('voice-appointments')
   export class VoiceAppointmentController {
     constructor(
-      private readonly voiceAppointmentService: VoiceAppointmentService
+      private readonly voiceAppointmentService: VoiceToAppointmentService
     ) {}
   
     @Post(':patientId')

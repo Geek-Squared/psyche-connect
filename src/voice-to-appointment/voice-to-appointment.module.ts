@@ -2,8 +2,8 @@ import { Module } from '@nestjs/common';
 import { AppointmentModule } from '../appointment/appointment.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { PatientModule } from '../patient/patient.module';
-import { VoiceAppointmentService } from './voice-to-appointment.service';
 import { VoiceAppointmentController } from './voice-to-appointment.controller';
+import { VoiceToAppointmentService } from './voice-to-appointment.service';
 
 @Module({
   imports: [
@@ -11,7 +11,7 @@ import { VoiceAppointmentController } from './voice-to-appointment.controller';
     CommunicationModule, 
     PatientModule
   ],
-  providers: [VoiceAppointmentService],
+  providers: [VoiceToAppointmentService],
   controllers: [VoiceAppointmentController]
 })
 export class VoiceAppointmentModule {}
